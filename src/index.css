@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@tailwind utilities;
+
+/* 
+  Classes customizadas para componentes reutilizáveis.
+  Estas classes podem ser utilizadas nos teus componentes React para manter um design consistente.
+*/
+@layer components {
+  .btn-primary {
+    @apply bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-4 rounded-md transition-colors;
+  }
+
+  .btn-secondary {
+    @apply bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-md transition-colors;
+  }
+
+  .btn-outline {
+    @apply border border-sky-500 text-sky-500 hover:bg-sky-50 font-semibold py-2 px-4 rounded-md transition-colors;
+  }
+
+  .input-field {
+    @apply w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow-md p-6;
+  }
+
+  .tooltip {
+    @apply relative inline-block;
+  }
+
+  .tooltip-text {
+    @apply invisible absolute z-10 w-48 bg-slate-800 text-white text-sm rounded-md p-2 opacity-0 transition-opacity duration-300 bottom-full left-1/2 transform -translate-x-1/2 mb-1;
+  }
+
+  .tooltip:hover .tooltip-text {
+    @apply visible opacity-100;
+  }
+}
