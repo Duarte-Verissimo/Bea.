@@ -1,29 +1,16 @@
 import React, { useState } from "react";
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { HelpCircle, ArrowRight } from "lucide-react";
 import {
   CalculationResult,
   CalculatorFormData,
   Material,
 } from "../types/index";
+import Dashboard from "./Dashboard";
 
 interface CalculatorProps {
   onCalculationComplete?: (result: CalculationResult) => void;
 }
-
-// Lista de procedimentos odontológicos comuns
-const PROCEDIMENTOS_DENTARIOS = [
-  { id: "consulta", nome: "Consulta Inicial", valorMedio: 50 },
-  { id: "limpeza", nome: "Limpeza Dentária", valorMedio: 60 },
-  { id: "restauracao", nome: "Restauração", valorMedio: 70 },
-  { id: "canal", nome: "Tratamento de Canal", valorMedio: 250 },
-  { id: "extracao", nome: "Extração Simples", valorMedio: 80 },
-  { id: "branqueamento", nome: "Branqueamento", valorMedio: 300 },
-  { id: "implante", nome: "Implantologia", valorMedio: 900 },
-  { id: "protese", nome: "Prótese Dentária", valorMedio: 500 },
-  { id: "ortodontia", nome: "Ortodontia", valorMedio: 2000 },
-  { id: "outro", nome: "Outro Procedimento", valorMedio: 0 },
-];
 
 // Interface para os procedimentos
 interface Procedimento {
@@ -40,6 +27,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
   const [procedimentos, setProcedimentos] = useState<Procedimento[]>([
     { id: "1", nomeProcedimento: "", valorBruto: 0 },
   ]);
+  const [procedimentoErro, setProcedimentoErro] = useState<string | null>(null);
 
   const materiaisTotal = materiais.reduce((sum, item) => sum + item.valor, 0);
   const procedimentosTotal = procedimentos.reduce(
@@ -53,15 +41,11 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
     watch,
     reset,
     formState: { errors },
+    trigger,
   } = useForm<CalculatorFormData>({
     defaultValues: {
-      percentagemContrato: 0,
-      tipoServico: "consulta",
-      valorBruto: 0,
-      alimentacao: 0,
-      deslocacao: 0,
-      ssRate: 0,
-      irsRate: 0,
+      // Removemos a inicialização com 0 para que o campo comece vazio
+      // percentagemContrato: 0,
     },
   });
 
@@ -88,6 +72,9 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
     field: keyof Procedimento,
     value: string | number
   ) => {
+    if (field === "valorBruto" && typeof value === "number" && value >= 1) {
+      setProcedimentoErro(null);
+    }
     setProcedimentos(
       procedimentos.map((proc) => {
         if (proc.id === id) {
@@ -124,23 +111,34 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
     setMateriais(novosMateriais);
   };
 
-  const onSubmit: SubmitHandler<CalculatorFormData> = (data) => {
-    // Calcular valores com chaves compatíveis com a interface CalculationResult
+  const onSubmit = (data: CalculatorFormData): void => {
+    // Cálculos
     const grossIncome = procedimentosTotal;
-    const contractIncome = grossIncome * (data.percentagemContrato / 100);
-    const socialContributionsAmount = contractIncome * (data.ssRate / 100);
-    const taxAmount = contractIncome * (data.irsRate / 100);
+    const safePercentagemContrato = isNaN(data.percentagemContrato)
+      ? 0
+      : data.percentagemContrato;
+    const contractIncome = grossIncome * (safePercentagemContrato / 100);
+    const safeSsRate = isNaN(data.ssRate) ? 0 : data.ssRate;
+    const safeIrsRate = isNaN(data.irsRate) ? 0 : data.irsRate;
+    const socialContributionsAmount = contractIncome * (safeSsRate / 100);
+    const taxAmount = contractIncome * (safeIrsRate / 100);
     const discounts = socialContributionsAmount + taxAmount;
-    const additionalCosts =
-      Number(data.alimentacao) + Number(data.deslocacao) + materiaisTotal;
+    const additionalCosts = materiaisTotal;
     const netIncome = contractIncome - discounts - additionalCosts;
     const totalExpenses =
       grossIncome - contractIncome + discounts + additionalCosts;
     const profitMargin = grossIncome > 0 ? (netIncome / grossIncome) * 100 : 0;
     const vatAmount = 0;
 
+    // Converter a lista de materiais para o formato esperado no Dashboard
+    const additionalCostItems = materiais.map((material) => ({
+      description: material.nome,
+      amount: material.valor,
+    }));
+
     const result: CalculationResult = {
       grossIncome,
+      contractIncome,
       netIncome,
       totalExpenses,
       taxAmount,
@@ -148,6 +146,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
       currency: "EUR",
       vatAmount,
       profitMargin,
+      additionalCostItems, // Incluir os custos adicionais
     };
 
     setCalculationResult(result);
@@ -167,16 +166,43 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
     }).format(value);
   };
 
-  const nextStep = () => setStep(step + 1);
-  const prevStep = () => setStep(step - 1);
-  const resetCalculator = () => {
+  const handleNextStep = () => {
+    // Se estiver no passo 1, verificar se existe pelo menos um procedimento com valor >= 1
+    if (step === 1) {
+      const temValorValido = procedimentos.some((proc) => proc.valorBruto >= 1);
+
+      if (!temValorValido) {
+        // Definir mensagem de erro em vez de mostrar alerta
+        setProcedimentoErro(
+          "Por favor, insira um valor cobrado de pelo menos 1€ para continuar."
+        );
+        return;
+      }
+      // Limpar o erro se passou na validação
+      setProcedimentoErro(null);
+    }
+
+    // Se passar pela validação ou for outro passo, avança normalmente
+    setStep(step + 1);
+  };
+
+  const handlePrevStep = () => setStep(step - 1);
+  const handleResetCalculator = () => {
     reset();
     setMateriais([]);
-    setProcedimentos([
-      { id: "1", nomeProcedimento: "Consulta Inicial", valorBruto: 50 },
-    ]);
+    setProcedimentos([{ id: "1", nomeProcedimento: "", valorBruto: 0 }]);
     setCalculationResult(null);
     setStep(1);
+  };
+
+  // Função para validar campo antes de avançar
+  const handleNextStepWithValidation = async (
+    fieldsToValidate: (keyof CalculatorFormData)[]
+  ) => {
+    const isValid = await trigger(fieldsToValidate);
+    if (isValid) {
+      setStep(step + 1);
+    }
   };
 
   const renderStepIndicator = () => {
@@ -204,6 +230,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                   : "pendente"
               }`}
               role="status"
+              tabIndex={0}
             >
               {step > stepNumber ? (
                 <svg
@@ -212,6 +239,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -265,7 +293,8 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                   <button
                     type="button"
                     onClick={handleAddProcedimento}
-                    className="text-sm bg-blue-600 text-white hover:bg-blue-700 flex items-center rounded-md px-2 py-1"
+                    className="px-4 py-2 h-[42px] bg-blue-600 text-white hover:bg-blue-700 flex items-center rounded-md transition-colors"
+                    aria-label="Adicionar novo procedimento"
                   >
                     <span className="mr-1">Adicionar Procedimento</span>
                     <svg
@@ -274,6 +303,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
+                      aria-hidden="true"
                     >
                       <path
                         strokeLinecap="round"
@@ -293,10 +323,14 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                     >
                       <div className="flex-grow grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs text-slate-500 mb-1">
+                          <label
+                            htmlFor={`procedimento-nome-${procedimento.id}`}
+                            className="block text-xs text-slate-500 mb-1"
+                          >
                             Nome do Procedimento
                           </label>
                           <input
+                            id={`procedimento-nome-${procedimento.id}`}
                             type="text"
                             className="w-full p-2 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             placeholder="Ex: Limpeza, Restauração, Canal..."
@@ -308,11 +342,15 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                                 e.target.value
                               )
                             }
+                            aria-label="Nome do procedimento dentário"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-xs text-slate-500 mb-1">
+                          <label
+                            htmlFor={`procedimento-valor-${procedimento.id}`}
+                            className="block text-xs text-slate-500 mb-1"
+                          >
                             Valor Cobrado (€)
                           </label>
                           <div className="relative">
@@ -320,10 +358,15 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                               €
                             </span>
                             <input
+                              id={`procedimento-valor-${procedimento.id}`}
                               type="number"
                               step="0.01"
                               min="0"
-                              className="w-full p-2 pl-8 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className={`w-full p-2 pl-8 text-black border ${
+                                procedimentoErro
+                                  ? "border-red-500 focus:ring-red-500"
+                                  : "border-gray-300 focus:ring-blue-500"
+                              } rounded-md focus:ring-2 focus:border-blue-500`}
                               placeholder="0.00"
                               value={
                                 procedimento.valorBruto === 0
@@ -337,8 +380,22 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                                   parseFloat(e.target.value || "0")
                                 )
                               }
+                              aria-label="Valor do procedimento em euros"
+                              aria-describedby={
+                                procedimentoErro
+                                  ? "procedimento-valor-erro"
+                                  : undefined
+                              }
                             />
                           </div>
+                          {procedimentoErro && (
+                            <p
+                              id="procedimento-valor-erro"
+                              className="mt-1 text-sm text-red-600"
+                            >
+                              {procedimentoErro}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <button
@@ -346,8 +403,9 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                         onClick={() =>
                           handleRemoveProcedimento(procedimento.id)
                         }
-                        className="mt-[20px] self-start bg-blue-600 text-white hover:bg-blue-700 rounded-md p-1"
+                        className="mt-5 self-start h-[42px] px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors"
                         disabled={procedimentos.length <= 1}
+                        aria-label="Remover procedimento"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -355,6 +413,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
+                          aria-hidden="true"
                         >
                           <path
                             strokeLinecap="round"
@@ -384,10 +443,12 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
             <div className="flex justify-end mt-8">
               <button
                 type="button"
-                onClick={nextStep}
+                onClick={handleNextStep}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md flex items-center hover:bg-blue-700 transition-colors"
+                aria-label="Avançar para a próxima etapa"
               >
-                Próximo <ArrowRight className="ml-2 h-4 w-4" />
+                Próximo{" "}
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -403,10 +464,16 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
             </p>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label
+                htmlFor="percentagemContrato"
+                className="block text-sm font-medium text-slate-700 mb-1"
+              >
                 Percentagem do Contrato (%)
                 <div className="tooltip inline-block ml-1">
-                  <HelpCircle className="h-4 w-4 text-slate-400 inline" />
+                  <HelpCircle
+                    className="h-4 w-4 text-slate-400 inline"
+                    aria-hidden="true"
+                  />
                   <span className="tooltip-text">
                     Percentagem que recebe do valor total cobrado conforme seu
                     contrato com a clínica
@@ -415,6 +482,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
               </label>
               <div className="relative">
                 <input
+                  id="percentagemContrato"
                   type="number"
                   step="0.1"
                   min="0"
@@ -432,14 +500,18 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                     },
                   })}
                   className="w-full p-2 pr-8 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="50"
+                  placeholder="Insira a percentagem do seu contrato"
+                  aria-describedby="percentagemContrato-error"
                 />
                 <span className="absolute right-3 top-2.5 text-slate-500">
                   %
                 </span>
               </div>
               {errors.percentagemContrato && (
-                <p className="mt-1 text-sm text-red-600">
+                <p
+                  className="mt-1 text-sm text-red-600"
+                  id="percentagemContrato-error"
+                >
                   {errors.percentagemContrato.message}
                 </p>
               )}
@@ -451,7 +523,8 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
               </h4>
               <div className="text-blue-700 font-medium">
                 {formatCurrency(
-                  (procedimentosTotal * formValues.percentagemContrato) / 100
+                  (procedimentosTotal * (formValues.percentagemContrato || 0)) /
+                    100
                 )}
               </div>
             </div>
@@ -459,17 +532,22 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
             <div className="flex justify-between mt-8">
               <button
                 type="button"
-                onClick={prevStep}
+                onClick={handlePrevStep}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                aria-label="Voltar para a etapa anterior"
               >
                 Voltar
               </button>
               <button
                 type="button"
-                onClick={nextStep}
+                onClick={() =>
+                  handleNextStepWithValidation(["percentagemContrato"])
+                }
                 className="px-4 py-2 bg-blue-600 text-white rounded-md flex items-center hover:bg-blue-700 transition-colors"
+                aria-label="Avançar para a próxima etapa"
               >
-                Próximo <ArrowRight className="ml-2 h-4 w-4" />
+                Próximo{" "}
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -487,20 +565,22 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-slate-700">
-                    Materiais e Equipamentos
+                    Custos Adicionais
                   </label>
                   <button
                     type="button"
                     onClick={handleAddMaterial}
-                    className="text-sm bg-blue-600 text-white hover:bg-blue-700 flex items-center rounded-md px-2 py-1"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
+                    aria-label="Adicionar novo custo material"
                   >
-                    <span className="mr-1">Adicionar Material</span>
+                    <span className="mr-1">Adicionar Custo</span>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       className="h-4 w-4"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
+                      aria-hidden="true"
                     >
                       <path
                         strokeLinecap="round"
@@ -515,7 +595,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                 {materiais.length === 0 ? (
                   <div className="text-center py-6 bg-slate-50 rounded-lg border border-dashed border-slate-300">
                     <p className="text-slate-500">
-                      Nenhum material adicionado. Clique em "Adicionar Material"
+                      Nenhum material adicionado. Clique em "Adicionar Custo"
                       para incluir materiais descartáveis, instrumentos, etc.
                     </p>
                   </div>
@@ -523,11 +603,18 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                   <div className="space-y-3">
                     {materiais.map((material, index) => (
                       <div
-                        key={index}
+                        key={material.id}
                         className="flex items-start gap-2 p-3 bg-slate-50 rounded-lg"
                       >
                         <div className="flex-grow">
+                          <label
+                            htmlFor={`material-nome-${material.id}`}
+                            className="sr-only"
+                          >
+                            Nome do material
+                          </label>
                           <input
+                            id={`material-nome-${material.id}`}
                             type="text"
                             className="mb-2 w-full p-2 text-black border border-gray-300 rounded-md"
                             placeholder="Nome do material (ex: luvas, brocas)"
@@ -539,12 +626,20 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                                 e.target.value
                               )
                             }
+                            aria-label="Nome do material"
                           />
+                          <label
+                            htmlFor={`material-valor-${material.id}`}
+                            className="sr-only"
+                          >
+                            Valor do material em euros
+                          </label>
                           <div className="relative">
                             <span className="absolute left-3 top-2.5 text-slate-500">
                               €
                             </span>
                             <input
+                              id={`material-valor-${material.id}`}
                               type="number"
                               step="0.01"
                               min="0"
@@ -558,13 +653,15 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                                   parseFloat(e.target.value || "0")
                                 )
                               }
+                              aria-label="Valor do material em euros"
                             />
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleRemoveMaterial(index)}
-                          className="mt-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md p-1"
+                          className="mt-5 self-start h-[42px] px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors"
+                          aria-label="Remover material"
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -572,6 +669,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
+                            aria-hidden="true"
                           >
                             <path
                               strokeLinecap="round"
@@ -597,84 +695,25 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                   </div>
                 )}
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Custos de Alimentação (€)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-slate-500">
-                      €
-                    </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      {...register("alimentacao", {
-                        valueAsNumber: true,
-                        min: {
-                          value: 0,
-                          message: "Valor não pode ser negativo",
-                        },
-                      })}
-                      className="w-full p-2 pl-8 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  {errors.alimentacao && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {errors.alimentacao.message}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Custos de Deslocação (€)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-slate-500">
-                      €
-                    </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      {...register("deslocacao", {
-                        valueAsNumber: true,
-                        min: {
-                          value: 0,
-                          message: "Valor não pode ser negativo",
-                        },
-                      })}
-                      className="w-full p-2 pl-8 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  {errors.deslocacao && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {errors.deslocacao.message}
-                    </p>
-                  )}
-                </div>
-              </div>
             </div>
 
             <div className="flex justify-between mt-8">
               <button
                 type="button"
-                onClick={prevStep}
+                onClick={handlePrevStep}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                aria-label="Voltar para a etapa anterior"
               >
                 Voltar
               </button>
               <button
                 type="button"
-                onClick={nextStep}
+                onClick={handleNextStep}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md flex items-center hover:bg-blue-700 transition-colors"
+                aria-label="Avançar para a próxima etapa"
               >
-                Próximo <ArrowRight className="ml-2 h-4 w-4" />
+                Próximo{" "}
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -691,10 +730,16 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label
+                  htmlFor="ssRate"
+                  className="block text-sm font-medium text-slate-700 mb-1"
+                >
                   Taxa de Segurança Social (%)
                   <div className="tooltip inline-block ml-1">
-                    <HelpCircle className="h-4 w-4 text-slate-400 inline" />
+                    <HelpCircle
+                      className="h-4 w-4 text-slate-400 inline"
+                      aria-hidden="true"
+                    />
                     <span className="tooltip-text">
                       Taxa de Segurança Social para trabalhadores independentes
                       (aproximadamente 21,4% em Portugal)
@@ -703,13 +748,13 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                 </label>
                 <div className="relative">
                   <input
+                    id="ssRate"
                     type="number"
                     step="0.1"
                     min="0"
                     max="100"
                     {...register("ssRate", {
                       valueAsNumber: true,
-                      required: "Taxa de SS é obrigatória",
                       min: { value: 0, message: "Taxa não pode ser negativa" },
                       max: {
                         value: 100,
@@ -718,23 +763,30 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                     })}
                     className="w-full p-2 pr-8 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="21.4"
+                    aria-describedby="ssRate-error"
                   />
                   <span className="absolute right-3 top-2.5 text-slate-500">
                     %
                   </span>
                 </div>
                 {errors.ssRate && (
-                  <p className="mt-1 text-sm text-red-600">
+                  <p className="mt-1 text-sm text-red-600" id="ssRate-error">
                     {errors.ssRate.message}
                   </p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label
+                  htmlFor="irsRate"
+                  className="block text-sm font-medium text-slate-700 mb-1"
+                >
                   Taxa de IRS (%)
                   <div className="tooltip inline-block ml-1">
-                    <HelpCircle className="h-4 w-4 text-slate-400 inline" />
+                    <HelpCircle
+                      className="h-4 w-4 text-slate-400 inline"
+                      aria-hidden="true"
+                    />
                     <span className="tooltip-text">
                       Taxa de IRS aplicável ao seu rendimento tributável. Pode
                       variar conforme o escalão de rendimentos.
@@ -743,13 +795,13 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                 </label>
                 <div className="relative">
                   <input
+                    id="irsRate"
                     type="number"
                     step="0.1"
                     min="0"
                     max="100"
                     {...register("irsRate", {
                       valueAsNumber: true,
-                      required: "Taxa de IRS é obrigatória",
                       min: { value: 0, message: "Taxa não pode ser negativa" },
                       max: {
                         value: 100,
@@ -758,13 +810,14 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                     })}
                     className="w-full p-2 pr-8 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="25"
+                    aria-describedby="irsRate-error"
                   />
                   <span className="absolute right-3 top-2.5 text-slate-500">
                     %
                   </span>
                 </div>
                 {errors.irsRate && (
-                  <p className="mt-1 text-sm text-red-600">
+                  <p className="mt-1 text-sm text-red-600" id="irsRate-error">
                     {errors.irsRate.message}
                   </p>
                 )}
@@ -797,8 +850,9 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
             <div className="flex justify-between mt-8">
               <button
                 type="button"
-                onClick={prevStep}
+                onClick={handlePrevStep}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                aria-label="Voltar para a etapa anterior"
               >
                 Voltar
               </button>
@@ -806,6 +860,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
                 type="button"
                 onClick={handleSubmit(onSubmit)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                aria-label="Calcular o rendimento final"
               >
                 Calcular Rendimento
               </button>
@@ -815,162 +870,10 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
 
       case 5: // Resultados
         return calculationResult ? (
-          <div className="space-y-6">
-            <h3 className="text-xl font-semibold text-center">
-              Resultado do Cálculo
-            </h3>
-
-            <div className="bg-blue-50 p-6 rounded-lg border border-blue-100">
-              <div className="space-y-4">
-                <div className="flex flex-col md:flex-row md:justify-between items-center py-2 border-b border-blue-200">
-                  <div className="flex flex-col items-center md:items-start">
-                    <span className="text-blue-700 text-sm">Procedimento:</span>
-                    <span className="font-medium">
-                      {PROCEDIMENTOS_DENTARIOS.find(
-                        (p) => p.id === formValues.tipoServico
-                      )?.nome || formValues.tipoServico}
-                    </span>
-                  </div>
-                  <div className="flex flex-col items-center md:items-end">
-                    <span className="text-blue-700 text-sm">Valor Bruto:</span>
-                    <span className="font-medium text-lg">
-                      {formatCurrency(calculationResult.grossIncome)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-b border-blue-200">
-                  <span className="text-blue-700">
-                    Valor Após Contrato ({formValues.percentagemContrato}%):
-                  </span>
-                  <span className="font-medium">
-                    {formatCurrency(
-                      calculationResult.grossIncome *
-                        (formValues.percentagemContrato / 100)
-                    )}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-b border-blue-200">
-                  <span className="text-blue-700">
-                    Desconto Segurança Social ({formValues.ssRate}%):
-                  </span>
-                  <span className="font-medium text-red-600">
-                    -
-                    {formatCurrency(
-                      calculationResult.socialContributionsAmount
-                    )}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-b border-blue-200">
-                  <span className="text-blue-700">
-                    Desconto IRS ({formValues.irsRate}%):
-                  </span>
-                  <span className="font-medium text-red-600">
-                    -{formatCurrency(calculationResult.taxAmount)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-b border-blue-200">
-                  <span className="text-blue-700">Custos Adicionais:</span>
-                  <span className="font-medium text-red-600">
-                    -
-                    {formatCurrency(
-                      Number(formValues.alimentacao) +
-                        Number(formValues.deslocacao) +
-                        materiaisTotal
-                    )}
-                  </span>
-                </div>
-
-                <div className="bg-white p-4 rounded-lg mt-4">
-                  <div className="flex flex-col md:flex-row justify-between items-center">
-                    <span className="text-lg font-bold text-blue-800">
-                      Valor Líquido Final:
-                    </span>
-                    <span className="text-2xl font-bold text-green-600">
-                      {formatCurrency(calculationResult.netIncome)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2 mt-4">
-                  <h4 className="text-sm font-medium text-blue-800">
-                    Detalhe dos Custos:
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="bg-white p-3 rounded border border-blue-100">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-slate-700">
-                          Materiais:
-                        </span>
-                        <span className="text-sm font-medium">
-                          {formatCurrency(materiaisTotal)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-3 rounded border border-blue-100">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-slate-700">
-                          Alimentação:
-                        </span>
-                        <span className="text-sm font-medium">
-                          {formatCurrency(Number(formValues.alimentacao))}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-3 rounded border border-blue-100">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-slate-700">
-                          Deslocação:
-                        </span>
-                        <span className="text-sm font-medium">
-                          {formatCurrency(Number(formValues.deslocacao))}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-3 rounded border border-blue-100">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-slate-700">
-                          Total de Impostos:
-                        </span>
-                        <span className="text-sm font-medium">
-                          {formatCurrency(
-                            calculationResult.taxAmount +
-                              calculationResult.socialContributionsAmount
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 p-3 bg-yellow-50 border-l-4 border-yellow-400 text-sm text-yellow-800">
-                <strong>Nota:</strong> Este cálculo é uma estimativa. Os valores
-                reais podem variar de acordo com a sua situação fiscal
-                específica e legislação em vigor.
-              </div>
-            </div>
-
-            <div className="flex justify-center mt-6 space-x-4">
-              <button
-                type="button"
-                onClick={resetCalculator}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                Novo Cálculo
-              </button>
-              <button
-                type="button"
-                onClick={prevStep}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                Ajustar Valores
-              </button>
-            </div>
-          </div>
+          <Dashboard
+            calculationResult={calculationResult}
+            onNewCalculation={handleResetCalculator}
+          />
         ) : (
           <div className="text-center py-8">
             <p className="text-red-600">
@@ -980,6 +883,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
               type="button"
               onClick={() => setStep(1)}
               className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              aria-label="Voltar ao início do cálculo"
             >
               Voltar ao início
             </button>
@@ -992,7 +896,7 @@ const Calculator: React.FC<CalculatorProps> = ({ onCalculationComplete }) => {
   };
 
   return (
-    <div className="calculator-container bg-white rounded-lg shadow-md p-6 min-h-[700px] flex flex-col overflow-hidden">
+    <div className="m-20 mx-0 w-full bg-white rounded-lg shadow-md p-6 flex flex-col overflow-hidden">
       <form
         className="calculator-form flex-grow overflow-hidden"
         onSubmit={handleSubmit(onSubmit)}

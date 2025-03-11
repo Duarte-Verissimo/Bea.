@@ -1,13 +1,18 @@
-import { BrowserRouter as Router } from "react-router-dom";
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useState, useEffect } from "react";
 import Footer from "./components/Footer";
 import Calculator from "./components/Calculator";
-import CalculationResults from "./components/CalculationResults";
-/*import HeroSection from "./components/HeroSection";*/
+import LandingPage from "./pages/LandingPage";
 import { CalculationResult } from "./types/index";
 import "./App.css";
+import Header from "./components/Header";
+import Novidades from "./pages/Novidades";
+import SignInPage from "./pages/SignIn";
+import SignUpPage from "./pages/SignUp";
+import ProtectedRoute from "./components/ProtectedRoute";
 
-function App() {
+const App: React.FC = () => {
   const [calculationResult, setCalculationResult] =
     useState<CalculationResult | null>(null);
 
@@ -31,31 +36,24 @@ function App() {
   }, [calculationResult]);
 
   return (
-    <Router>
-      <div className="flex flex-col min-h-screen w-full bg-[#eff0f3]">
-        <main className="flex-1 w-full">
-          <div className="mt-12 mx-auto w-full max-w-4xl">
-            {!calculationResult ? (
-              <Calculator onCalculationComplete={handleCalculationComplete} />
-            ) : (
-              <CalculationResults
-                result={{
-                  ...calculationResult,
-                  taxAmount: calculationResult.taxAmount || 0,
-                  socialContributionsAmount:
-                    calculationResult.socialContributionsAmount || 0,
-                  vatAmount: calculationResult.vatAmount || 0,
-                  profitMargin: calculationResult.profitMargin || 0,
-                }}
-                onRecalculate={handleNewCalculation}
-              />
-            )}
-          </div>
-        </main>
-        <Footer />
-      </div>
-    </Router>
+    <BrowserRouter>
+      <Header />
+      <Routes>
+        <Route path="/sign-in" element={<SignInPage />} />
+        <Route path="/sign-up" element={<SignUpPage />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route
+          path="/novidades"
+          element={
+            <ProtectedRoute>
+              <Novidades />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+      <Footer />
+    </BrowserRouter>
   );
-}
+};
 
 export default App;

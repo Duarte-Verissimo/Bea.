@@ -9,7 +9,6 @@ module.exports = {
         secondary: "#10b981",
         "secondary-dark": "#059669",
         accent: "#8b5cf6",
-        background: "#f8fafc",
         foreground: "#0f172a",
         card: "#ffffff",
         "card-foreground": "#1e293b",

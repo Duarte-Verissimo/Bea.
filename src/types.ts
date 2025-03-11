@@ -20,4 +20,9 @@ export interface CalculationResult {
   socialContributionsAmount: number;
   vatAmount?: number;
   profitMargin?: number;
+  percentagemContrato?: number;
+  additionalCostItems?: {
+    description: string;
+    amount: number;
+  }[];
 }

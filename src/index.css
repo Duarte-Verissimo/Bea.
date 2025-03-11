@@ -1,11 +1,14 @@
 @import "tailwindcss";
 
+@plugin "tailwindcss-animate";
+
 @tailwind utilities;
 
-/* 
-  Classes customizadas para componentes reutilizáveis.
-  Estas classes podem ser utilizadas nos teus componentes React para manter um design consistente.
-*/
+@layer base {
+  body {
+  }
+}
+
 @layer components {
   .btn-primary {
     @apply bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-4 rounded-md transition-colors;

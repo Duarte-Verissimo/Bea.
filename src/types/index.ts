@@ -15,9 +15,11 @@ export interface CalculationResult {
   totalExpenses: number;
   taxAmount: number;
   socialContributionsAmount: number;
-  currency: string;
   vatAmount: number;
   profitMargin: number;
+  currency: string;
+  contractIncome: number;
+  contractPercentage: number;
 }
 
 export interface ExpenseItem {

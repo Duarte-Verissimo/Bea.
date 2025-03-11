@@ -20,4 +20,6 @@ export interface CalculationResult extends BaseCalculationResult {
   currency: string;
   vatAmount: number;
   profitMargin: number;
+  contractPercentage: number;
+  contractIncome: number;
 }
