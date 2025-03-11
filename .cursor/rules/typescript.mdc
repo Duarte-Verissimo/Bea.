@@ -1,9 +1,0 @@
----
-description: Only use Typescript files with react
-globs: .jsx
----
-
-# Your rule content
-- When creating a file make allways a .tsx
-- You can @ files here
-- You can use markdown but dont have to
